@@ -189,11 +189,11 @@ void Session::SaveScreen() {
     fs::create_directories(base);
 
     std::string filename{oss.str() + "_" + GetStringFromHostPort() + ".png"};
-    fs::path outp{base / filename};
-    std::ofstream ofs(outp, std::ios::binary);
+    fs::path out_path{base / filename};
+    std::ofstream file(out_path, std::ios::binary);
 
-    ofs.write(reinterpret_cast<char*>(msg.img_bytes.data()), msg.img_bytes.size());
-    ofs.close();
+    file.write(reinterpret_cast<char*>(msg.img_bytes.data()), msg.img_bytes.size());
+    file.close();
 
-    std::cout<<"[INFO] [" << GetCurrentTimestamp() << "] [client: " << _client_host << ':' << _client_port << "] Saved image: \"" << outp.string() << "\"\n";
+    std::cout<<"[INFO] [" << GetCurrentTimestamp() << "] [client: " << _client_host << ':' << _client_port << "] Saved image: \"" << out_path.string() << "\"\n";
 }
