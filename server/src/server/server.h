@@ -9,6 +9,7 @@
 
 #include <sys/epoll.h>
 
+#include "logger.h"
 #include "session.h"
 #include "resource_factory.h"
 
@@ -32,6 +33,8 @@ private:
 
 private:
     int _listen_port;
+
+    Logger _logger;
 
     UniqueFD _proxy_fd{};
     UniqueFD _epoll_fd{};

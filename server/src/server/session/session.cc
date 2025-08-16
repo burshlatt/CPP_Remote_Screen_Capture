@@ -15,10 +15,10 @@
 
 namespace fs = std::filesystem;
 
-Session::Session(UniqueFD&& client_fd, const std::string& host, uint16_t port) :
+Session::Session(UniqueFD&& client_fd, const std::string& host, const std::string& port) :
     _client_fd(std::move(client_fd)),
     _client_host(host),
-    _client_port(std::to_string(port))
+    _client_port(port)
 {}
 
 int Session::GetClientFD() const noexcept {
@@ -51,7 +51,7 @@ bool Session::RecvAll(int fd) {
                 continue;
             }
 
-            std::cerr << "recv() error from client: " << strerror(errno) << '\n';
+            _logger.PrintInTerminal(MessageType::K_ERROR, "recv() error from client: " + std::string(strerror(errno)));
 
             return false;
         }
@@ -147,17 +147,6 @@ Message Session::ParseMessage() {
     return msg;
 }
 
-std::string Session::GetCurrentTimestamp() {
-    auto now{std::chrono::system_clock::now()};
-    std::time_t now_time{std::chrono::system_clock::to_time_t(now)};
-    std::tm* local_time{std::localtime(&now_time)};
-
-    std::ostringstream oss;
-    oss << std::put_time(local_time, "%Y-%m-%d %H:%M:%S");
-
-    return oss.str();
-}
-
 std::string Session::GetStringFromHostPort() {
     std::string host{_client_host};
 
@@ -172,28 +161,24 @@ void Session::SaveScreen() {
     try {
         msg = ParseMessage();
     } catch (const std::runtime_error& ex) {
-        std::cerr << ex.what() << '\n';
+        _logger.PrintInTerminal(MessageType::K_ERROR, ex.what());
 
         return;
     }
 
-    auto now{std::chrono::system_clock::now()};
-    std::time_t time{std::chrono::system_clock::to_time_t(now)};
-    std::tm tm{*std::localtime(&time)};
-
-    std::ostringstream oss;
-    oss << std::put_time(&tm, "%Y%m%d_%H%M%S");
+    std::string timestamp{_logger.GetCurrentTimestamp("%Y%m%d_%H%M%S")};
 
     fs::path base{fs::path("screenshots") / fs::path(msg.hostname) / fs::path(msg.username)};
 
     fs::create_directories(base);
 
-    std::string filename{oss.str() + "_" + GetStringFromHostPort() + ".png"};
+    std::string filename{timestamp + "_" + GetStringFromHostPort() + ".png"};
     fs::path out_path{base / filename};
     std::ofstream file(out_path, std::ios::binary);
 
     file.write(reinterpret_cast<char*>(msg.img_bytes.data()), msg.img_bytes.size());
     file.close();
 
-    std::cout<<"[INFO] [" << GetCurrentTimestamp() << "] [client: " << _client_host << ':' << _client_port << "] Saved image: \"" << out_path.string() << "\"\n";
+    std::string log_msg{"[client: " + _client_host + ":" + _client_port + "] Saved image: \"" + out_path.string() + "\""};
+    _logger.PrintInTerminal(MessageType::K_INFO, log_msg);
 }

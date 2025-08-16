@@ -6,6 +6,7 @@
 
 #include "resource_factory.h"
 #include "screen_grabber.h"
+#include "logger.h"
 
 class Client {
 public:
@@ -15,14 +16,16 @@ public:
     void Run();
 
 private:
-    std::string GetHostname() const;
-    std::string GetUsername() const;
+    void SetupHostname();
+    void SetupUsername();
 
     uint16_t ParsePort(const std::string& s_host_port);
     std::string ParseHost(const std::string& s_host_port);
 
 private:
-    UniqueFD SetupSocket();
+    void WaitLoop();
+    void SendLoop();
+    void SetupSocket();
 
     template<typename T>
     void InsertToVector(std::vector<uint8_t>& buffer, T num);
@@ -31,12 +34,16 @@ private:
 
     size_t SendAll(const std::vector<uint8_t>& data);
     
-    std::string GetCurrentTimestamp();
-
 private:
+    std::string _s_host_port;
     std::string _server_host;
     uint16_t _server_port;
     unsigned _timeout_sec;
+
+    std::string _hostname;
+    std::string _username;
+
+    Logger _logger;
 
     UniqueFD _server_fd;
 

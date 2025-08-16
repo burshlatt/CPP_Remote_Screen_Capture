@@ -1,4 +1,3 @@
-#include <condition_variable>
 #include <iostream>
 #include <cstring>
 #include <iomanip>
@@ -15,89 +14,85 @@
 
 #include "client.h"
 
-std::mutex mutex;
-std::condition_variable cond;
 std::atomic<bool> stop_flag{false};
 
 void signal_handler(int sig) {
     if (sig == SIGINT) {
-        stop_flag = true;
-        cond.notify_all();
+        stop_flag.store(true, std::memory_order_relaxed);
     }
 }
 
 Client::Client(const std::string& s_host_port, unsigned timeout_sec) :
-    _server_host(ParseHost(s_host_port)),
-    _server_port(ParsePort(s_host_port)),
+    _s_host_port(s_host_port),
+    _server_host(ParseHost(_s_host_port)),
+    _server_port(ParsePort(_s_host_port)),
     _timeout_sec(timeout_sec)
 {}
 
 uint16_t Client::ParsePort(const std::string& s_host_port) {
-    auto port_beg_it{s_host_port.begin() + s_host_port.find(":") + 1};
-    std::string port_str(port_beg_it, s_host_port.end());
+    auto pos{s_host_port.find(":")};
+    
+    if (pos != std::string::npos) {
+        auto port_beg_it{s_host_port.begin() + pos + 1};
+        std::string port_str(port_beg_it, s_host_port.end());
 
-    int serv_port{std::stoi(port_str)};
+        try {
+            int serv_port{std::stoi(port_str)};
 
-    if (serv_port > 0 && serv_port <= 65535) {
-        return serv_port;
+            if (serv_port > 0 && serv_port <= 65535) {
+                return serv_port;
+            }
+        } catch (...) {
+            _logger.PrintInTerminal(MessageType::K_ERROR, "Invalid port.");
+
+            throw;
+        }
     }
 
-    throw std::invalid_argument("Invalid port: " + port_str);
+    throw std::invalid_argument("Invalid port.");
 }
 
 std::string Client::ParseHost(const std::string& s_host_port) {
-    auto host_end_it{s_host_port.begin() + s_host_port.find(":")};
-    std::string host_str(s_host_port.begin(), host_end_it);
+    auto pos{s_host_port.find(":")};
+    
+    if (pos != std::string::npos) {
+        auto host_end_it{s_host_port.begin() + pos};
+        std::string host_str(s_host_port.begin(), host_end_it);
 
-    struct in_addr addr;
+        struct in_addr addr;
 
-    if (inet_pton(AF_INET, host_str.c_str(), &addr) == 1) {
-        return host_str;
+        if (inet_pton(AF_INET, host_str.c_str(), &addr) == 1) {
+            return host_str;
+        }
     }
 
-    throw std::invalid_argument("Invalid host: " + host_str);
+    throw std::invalid_argument("Invalid host.");
 }
 
-std::string Client::GetHostname() const {
-    static std::string cached;
-
-    if (!cached.empty()) {
-        return cached;
-    }
-
+void Client::SetupHostname() {
     char buf[256];
 
     if (gethostname(buf, sizeof(buf)) == 0) {
-        return cached = std::string(buf);
+        _hostname = std::string(buf);
+    } else {
+        _hostname = "unknown-host";
     }
-
-    std::cerr << "Failed to get hostname\n";
-
-    return "unknown-host";
 }
 
-std::string Client::GetUsername() const {
-    static std::string cached;
-
-    if (!cached.empty()) {
-        return cached;
-    }
-
+void Client::SetupUsername() {
     struct passwd *pw{getpwuid(getuid())};
 
     if (pw) {
-        return cached = std::string(pw->pw_name);
+        _username = std::string(pw->pw_name);
+    } else {
+        _username = "unknown-user";
     }
-
-    std::cerr << "Failed to get username\n";
-
-    return "unknown-user";
 }
 
-UniqueFD Client::SetupSocket() {
-    UniqueFD fd(ResourceFactory::MakeUniqueFD(socket(AF_INET, SOCK_STREAM, 0)));
+void Client::SetupSocket() {
+    _server_fd = ResourceFactory::MakeUniqueFD(socket(AF_INET, SOCK_STREAM, 0));
 
-    if (!fd.Valid()) {
+    if (!_server_fd.Valid()) {
         throw std::runtime_error("SetupSocket(): " + std::string(strerror(errno)));
     }
 
@@ -109,13 +104,11 @@ UniqueFD Client::SetupSocket() {
         throw std::invalid_argument("Invalid server address");
     }
 
-    if (connect(fd.Get(), (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+    if (connect(_server_fd.Get(), (struct sockaddr*)&addr, sizeof(addr)) < 0) {
         throw std::runtime_error("SetupSocket(): " + std::string(strerror(errno)));
     }
 
-    std::cout << "[INFO] Connected! (server: " << _server_host << ':' << _server_port << ")\n";
-
-    return fd;
+    _logger.PrintInTerminal(MessageType::K_INFO, "Connected! (server: " + _s_host_port + ")");
 }
 
 template<typename T>
@@ -146,24 +139,19 @@ std::vector<uint8_t> Client::CreateMessage() {
 
     InsertToVector<uint32_t>(buffer, 0);
 
-    std::string hostname{GetHostname()};
-    std::string username{GetUsername()};
-
-    InsertToVector<uint16_t>(buffer, hostname.size());
-    InsertToVector<uint16_t>(buffer, username.size());
+    InsertToVector<uint16_t>(buffer, _hostname.size());
+    InsertToVector<uint16_t>(buffer, _username.size());
 
     int width{};
     int height{};
     std::vector<uint8_t> img_bytes;
 
-    if (!_screen_grabber.GrabAsPNG(img_bytes, width, height)) {
-        throw std::runtime_error("Failed to grab screen");
-    }
+    _screen_grabber.GrabAsPNG(img_bytes, width, height);
 
     InsertToVector<uint32_t>(buffer, img_bytes.size());
 
-    buffer.insert(buffer.end(), hostname.begin(), hostname.end());
-    buffer.insert(buffer.end(), username.begin(), username.end());
+    buffer.insert(buffer.end(), _hostname.begin(), _hostname.end());
+    buffer.insert(buffer.end(), _username.begin(), _username.end());
     buffer.insert(buffer.end(), img_bytes.begin(), img_bytes.end());
 
     uint32_t total_size{static_cast<uint32_t>(buffer.size())};
@@ -196,39 +184,43 @@ size_t Client::SendAll(const std::vector<uint8_t>& data) {
     return total_sent;
 }
 
-std::string Client::GetCurrentTimestamp() {
-    auto now{std::chrono::system_clock::now()};
-    std::time_t now_time{std::chrono::system_clock::to_time_t(now)};
-    std::tm* local_time{std::localtime(&now_time)};
+void Client::WaitLoop() {
+    for (unsigned i{0}; i < _timeout_sec; ++i) {
+        if (stop_flag.load(std::memory_order_relaxed)) {
+            break;
+        }
 
-    std::ostringstream oss;
-    oss << std::put_time(local_time, "%Y-%m-%d %H:%M:%S");
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+}
 
-    return oss.str();
+void Client::SendLoop() {
+    while (!stop_flag.load(std::memory_order_relaxed)) {
+        try {
+            std::vector<uint8_t> bytes(CreateMessage());
+            
+            try {
+                size_t sent{SendAll(bytes)};
+
+                _logger.PrintInTerminal(MessageType::K_INFO, "Sent " + std::to_string(sent) + " bytes to " + _s_host_port);
+            } catch (const std::runtime_error& ex) {
+                _logger.PrintInTerminal(MessageType::K_ERROR, ex.what());
+
+                return;
+            }
+        } catch (const std::runtime_error& ex) {
+            _logger.PrintInTerminal(MessageType::K_WARNING, ex.what());
+        }
+
+        WaitLoop();
+    }
 }
 
 void Client::Run() {
     std::signal(SIGINT, signal_handler);
 
-    _server_fd = SetupSocket();
-
-    while (!stop_flag) {
-        std::vector<uint8_t> bytes(CreateMessage());
-
-        try {
-            size_t sent{SendAll(bytes)};
-
-            std::cout << "[INFO] [" << GetCurrentTimestamp() << "] Sent " << sent << " bytes to " << _server_host  << ":" << _server_port << '\n';
-        } catch (const std::runtime_error& ex) {
-            std::cerr << ex.what() << '\n';
-
-            return;
-        }
-
-        std::unique_lock<std::mutex> lock(mutex);
-
-        cond.wait_for(lock, std::chrono::seconds(_timeout_sec), [] {
-            return stop_flag.load();
-        });
-    }
+    SetupSocket();
+    SetupHostname();
+    SetupUsername();
+    SendLoop();
 }

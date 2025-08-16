@@ -9,11 +9,11 @@
 
 #include "server.h"
 
-static volatile sig_atomic_t stop_flag = 0;
+std::atomic<bool> stop_flag{false};
 
 void signal_handler(int sig) {
     if (sig == SIGINT) {
-        stop_flag = 1;
+        stop_flag.store(true, std::memory_order_relaxed);
     }
 }
 
@@ -103,7 +103,7 @@ void Server::AcceptNewConnections() {
             } else if (errno == EINTR) {
                 continue;
             } else {
-                std::cerr << "accept(): " << strerror(errno) << '\n';
+                _logger.PrintInTerminal(MessageType::K_ERROR, "accept(): " + std::string(strerror(errno)));
 
                 break;
             }
@@ -117,19 +117,19 @@ void Server::AcceptNewConnections() {
         event.data.fd = client_fd.Get();
 
         if (epoll_ctl(_epoll_fd.Get(), EPOLL_CTL_ADD, client_fd.Get(), &event) == -1) {
-            std::cerr << "epoll_ctl(): " << strerror(errno) << '\n';
+            _logger.PrintInTerminal(MessageType::K_ERROR, "epoll_ctl(): " + std::string(strerror(errno)));
 
             continue;
         }
 
         std::string host(inet_ntoa(client_addr.sin_addr));
-        uint16_t port{ntohs(client_addr.sin_port)};
+        std::string port{std::to_string(ntohs(client_addr.sin_port))};
 
         auto session{std::make_shared<Session>(std::move(client_fd), host, port)};
 
         _fd_session_ht[session->GetClientFD()] = session;
 
-        std::cout << "[INFO] New connection! (client: " << host << ':' << port << ")\n";
+        _logger.PrintInTerminal(MessageType::K_INFO, "New connection! (client: " + host + ":" + port + ")");
     }
 }
 
@@ -140,7 +140,10 @@ void Server::CloseSession(std::shared_ptr<Session> session) {
 
     _fd_session_ht.erase(client_fd);
 
-    std::cout << "[INFO] Close connection. (client: " << session->GetClientHost() << ':' << session->GetClientPort() << ")\n";
+    std::string host(session->GetClientHost());
+    std::string port{session->GetClientPort()};
+
+    _logger.PrintInTerminal(MessageType::K_INFO, "Close connection. (client: " + host + ":" + port + ")");
 }
 
 void Server::HandleEvent(epoll_event& event) {
@@ -166,12 +169,12 @@ void Server::HandleEvent(epoll_event& event) {
 }
 
 void Server::EventLoop() {
-    std::cout << "Waiting...\n";
+    _logger.PrintInTerminal(MessageType::K_INFO, "Waiting...");
 
     constexpr size_t MAX_EVENTS{1024};
     std::vector<epoll_event> events(MAX_EVENTS);
 
-    while (!stop_flag) {
+    while (!stop_flag.load(std::memory_order_relaxed)) {
         int num_events{epoll_wait(_epoll_fd.Get(), events.data(), MAX_EVENTS, -1)};
 
         if (num_events == -1) {

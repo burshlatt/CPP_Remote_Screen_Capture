@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "logger.h"
 #include "resource_factory.h"
 
 struct Message {
@@ -18,7 +19,7 @@ struct Message {
 
 class Session {
 public:
-    Session(UniqueFD&& client_fd, const std::string& host, uint16_t port);
+    Session(UniqueFD&& client_fd, const std::string& host, const std::string& port);
 
 public:
     int GetClientFD() const noexcept;
@@ -40,7 +41,6 @@ private:
     std::vector<uint8_t> PopImg(uint32_t img_len);
 
     Message ParseMessage();
-    std::string GetCurrentTimestamp();
     std::string GetStringFromHostPort();
 
 private:
@@ -49,6 +49,8 @@ private:
     std::string _client_port;
 
     std::vector<uint8_t> _buffer;
+
+    Logger _logger;
 };
 
 #endif // SERVER_SERVER_SESSION_SESSION_H

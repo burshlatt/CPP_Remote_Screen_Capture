@@ -12,23 +12,19 @@ UniqueDisplay ScreenGrabber::OpenDisplay() {
     UniqueDisplay u_disp(ResourceFactory::MakeUniqueDisplay(XOpenDisplay(nullptr)));
 
     if (!u_disp.Valid()) {
-        std::cerr << "XOpenDisplay failed. Check DISPLAY.\n";
+        throw std::runtime_error("XOpenDisplay failed. Check DISPLAY.");
     }
 
     return u_disp;
 }
 
-bool ScreenGrabber::GetScreenAttributes(Display* disp, XWindowAttributes& gwa) {
+void ScreenGrabber::GetScreenAttributes(Display* disp, XWindowAttributes& gwa) {
     int screen{DefaultScreen(disp)};
     Window root{RootWindow(disp, screen)};
 
     if (!XGetWindowAttributes(disp, root, &gwa)) {
-        std::cerr << "XGetWindowAttributes failed.\n";
-
-        return false;
+        throw std::runtime_error("XGetWindowAttributes failed.");
     }
-
-    return true;
 }
 
 UniqueXImage ScreenGrabber::CaptureImage(Display* disp, Window root, int width, int height) {
@@ -36,7 +32,7 @@ UniqueXImage ScreenGrabber::CaptureImage(Display* disp, Window root, int width, 
     UniqueXImage u_ximg(ResourceFactory::MakeUniqueXImage(x_img));
 
     if (!u_ximg.Valid()) {
-        std::cerr << "XGetImage failed.\n";
+        throw std::runtime_error("XGetImage failed.");
     }
 
     return u_ximg;
@@ -49,9 +45,7 @@ std::vector<unsigned char> ScreenGrabber::ConvertToRGB(XImage* img, int width, i
     int bpp{img->bits_per_pixel};
 
     if (bpp != 24 && bpp != 32) {
-        std::cerr << "Unsupported bits_per_pixel: " << bpp << "\n";
-
-        return pixels;
+        throw std::runtime_error("Unsupported bits_per_pixel: " + std::to_string(bpp));
     }
 
     const bool is_lsb_first{(img->byte_order == LSBFirst)};
@@ -116,41 +110,31 @@ void ScreenGrabber::EncodePNG(const std::vector<unsigned char>& pixels, int widt
     stbi_write_png_to_func(MemWriter::write, &out_png, width, height, 3, pixels.data(), width * 3);
 }
 
-bool ScreenGrabber::GrabAsPNG(std::vector<unsigned char>& out_png, int& out_w, int& out_h) {
-    UniqueDisplay disp(OpenDisplay());
+void ScreenGrabber::GrabAsPNG(std::vector<unsigned char>& out_png, int& out_w, int& out_h) {
+    try {
+        UniqueDisplay disp(OpenDisplay());
+        XWindowAttributes gwa;
 
-    if (!disp.Valid()) {
-        return false;
+        GetScreenAttributes(disp.Get(), gwa);
+
+        int width{gwa.width};
+        int height{gwa.height};
+
+        if (width <= 0 || height <= 0) {
+            throw std::runtime_error("Invalid screen size.");
+        }
+
+        Window root{gwa.root};
+        UniqueXImage img(CaptureImage(disp.Get(), root, width, height));
+        std::vector<unsigned char> pixels(ConvertToRGB(img.Get(), width, height));
+
+        EncodePNG(pixels, width, height, out_png);
+
+        out_w = width;
+        out_h = height;
+    } catch (const std::runtime_error& ex) {
+        _logger.PrintInTerminal(MessageType::K_WARNING, "GrabAsPNG() error: " + std::string(ex.what()));
+
+        throw;
     }
-
-    XWindowAttributes gwa;
-
-    if (!GetScreenAttributes(disp.Get(), gwa)) {
-        return false;
-    }
-
-    int width{gwa.width};
-    int height{gwa.height};
-
-    if (width <= 0 || height <= 0) {
-        std::cerr << "Invalid screen size.\n";
-
-        return false;
-    }
-
-    Window root{RootWindow(disp.Get(), DefaultScreen(disp.Get()))};
-    UniqueXImage img(CaptureImage(disp.Get(), root, width, height));
-
-    if (!img.Valid()) {
-        return false;
-    }
-
-    std::vector<unsigned char> pixels{ConvertToRGB(img.Get(), width, height)};
-
-    EncodePNG(pixels, width, height, out_png);
-
-    out_w = width;
-    out_h = height;
-
-    return true;
 }
