@@ -4,7 +4,7 @@
 #include <string>
 #include <cstdint>
 
-#include "unique_fd.h"
+#include "resource_factory.h"
 #include "screen_grabber.h"
 
 class Client {

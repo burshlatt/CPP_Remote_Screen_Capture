@@ -42,7 +42,7 @@ std::string Server::CheckHost(const std::string& host) {
 }
 
 void Server::SetupEpoll() {
-    _epoll_fd = UniqueFD(epoll_create1(0));
+    _epoll_fd = UniqueFD(ResourceFactory::MakeUniqueFD(epoll_create1(0)));
     
     if (!_epoll_fd.Valid()) {
         throw std::runtime_error("SetupEpoll(): " + std::string(strerror(errno)));
@@ -50,18 +50,18 @@ void Server::SetupEpoll() {
 }
 
 void Server::SetupServerSocket() {
-    _proxy_fd = UniqueFD(socket(AF_INET, SOCK_STREAM, 0));
+    _proxy_fd = UniqueFD(ResourceFactory::MakeUniqueFD(socket(AF_INET, SOCK_STREAM, 0)));
 
     if (!_proxy_fd.Valid()) {
         throw std::runtime_error("SetupServerSocket(): " + std::string(strerror(errno)));
     }
 
-    int flags{fcntl(_proxy_fd, F_GETFL, 0)};
-    fcntl(_proxy_fd, F_SETFL, flags | O_NONBLOCK);
+    int flags{fcntl(_proxy_fd.Get(), F_GETFL, 0)};
+    fcntl(_proxy_fd.Get(), F_SETFL, flags | O_NONBLOCK);
 
     int opt{1};
 
-    if (setsockopt(_proxy_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
+    if (setsockopt(_proxy_fd.Get(), SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
         throw std::runtime_error("SetupServerSocket(): " + std::string(strerror(errno)));
     }
 
@@ -72,19 +72,19 @@ void Server::SetupServerSocket() {
 
     auto s_addr{reinterpret_cast<struct sockaddr*>(&server_addr)};
 
-    if (bind(_proxy_fd, s_addr, sizeof(server_addr)) == -1) {
+    if (bind(_proxy_fd.Get(), s_addr, sizeof(server_addr)) == -1) {
         throw std::runtime_error("SetupServerSocket(): " + std::string(strerror(errno)));
     }
 
-    if (listen(_proxy_fd, SOMAXCONN) == -1) {
+    if (listen(_proxy_fd.Get(), SOMAXCONN) == -1) {
         throw std::runtime_error("SetupServerSocket(): " + std::string(strerror(errno)));
     }
 
     epoll_event event;
     event.events = EPOLLIN | EPOLLET;
-    event.data.fd = _proxy_fd;
+    event.data.fd = _proxy_fd.Get();
 
-    if (epoll_ctl(_epoll_fd, EPOLL_CTL_ADD, _proxy_fd, &event) == -1) {
+    if (epoll_ctl(_epoll_fd.Get(), EPOLL_CTL_ADD, _proxy_fd.Get(), &event) == -1) {
         throw std::runtime_error("SetupServerSocket(): " + std::string(strerror(errno)));
     }
 }
@@ -95,7 +95,7 @@ void Server::AcceptNewConnections() {
         auto c_addr{reinterpret_cast<sockaddr*>(&client_addr)};
         socklen_t c_addr_len{sizeof(client_addr)};
 
-        UniqueFD client_fd(accept(_proxy_fd, c_addr, &c_addr_len));
+        UniqueFD client_fd(ResourceFactory::MakeUniqueFD(accept(_proxy_fd.Get(), c_addr, &c_addr_len)));
 
         if (!client_fd.Valid()) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -109,14 +109,14 @@ void Server::AcceptNewConnections() {
             }
         }
 
-        int flags{fcntl(client_fd, F_GETFL, 0)};
-        fcntl(client_fd, F_SETFL, flags | O_NONBLOCK);
+        int flags{fcntl(client_fd.Get(), F_GETFL, 0)};
+        fcntl(client_fd.Get(), F_SETFL, flags | O_NONBLOCK);
 
         epoll_event event;
         event.events = EPOLLIN | EPOLLET;
-        event.data.fd = client_fd;
+        event.data.fd = client_fd.Get();
 
-        if (epoll_ctl(_epoll_fd, EPOLL_CTL_ADD, client_fd, &event) == -1) {
+        if (epoll_ctl(_epoll_fd.Get(), EPOLL_CTL_ADD, client_fd.Get(), &event) == -1) {
             std::cerr << "epoll_ctl(): " << strerror(errno) << '\n';
 
             continue;
@@ -136,7 +136,7 @@ void Server::AcceptNewConnections() {
 void Server::CloseSession(std::shared_ptr<Session> session) {
     int client_fd{session->GetClientFD()};
 
-    epoll_ctl(_epoll_fd, EPOLL_CTL_DEL, client_fd, nullptr);
+    epoll_ctl(_epoll_fd.Get(), EPOLL_CTL_DEL, client_fd, nullptr);
 
     _fd_session_ht.erase(client_fd);
 
@@ -172,7 +172,7 @@ void Server::EventLoop() {
     std::vector<epoll_event> events(MAX_EVENTS);
 
     while (!stop_flag) {
-        int num_events{epoll_wait(_epoll_fd, events.data(), MAX_EVENTS, -1)};
+        int num_events{epoll_wait(_epoll_fd.Get(), events.data(), MAX_EVENTS, -1)};
 
         if (num_events == -1) {
             if (errno == EINTR) {
@@ -185,7 +185,7 @@ void Server::EventLoop() {
         for (int i{}; i < num_events; ++i) {
             int fd{events[i].data.fd};
 
-            if (fd == _proxy_fd) {
+            if (fd == _proxy_fd.Get()) {
                 AcceptNewConnections();
             } else {
                 HandleEvent(events[i]);

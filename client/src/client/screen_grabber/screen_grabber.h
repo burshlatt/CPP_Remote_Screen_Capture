@@ -5,8 +5,7 @@
 #include <cstdint>
 #include <utility>
 
-#include "unique_display.h"
-#include "unique_x_image.h"
+#include "resource_factory.h"
 
 class ScreenGrabber {
 public:

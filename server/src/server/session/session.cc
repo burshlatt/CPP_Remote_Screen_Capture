@@ -22,7 +22,7 @@ Session::Session(UniqueFD&& client_fd, const std::string& host, uint16_t port) :
 {}
 
 int Session::GetClientFD() const noexcept {
-    return _client_fd;
+    return _client_fd.Get();
 }
 
 std::string Session::GetClientHost() const noexcept {

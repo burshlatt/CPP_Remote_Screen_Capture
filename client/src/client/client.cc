@@ -1,3 +1,4 @@
+#include <condition_variable>
 #include <iostream>
 #include <cstring>
 #include <iomanip>
@@ -14,11 +15,14 @@
 
 #include "client.h"
 
-static volatile sig_atomic_t stop_flag = 0;
+std::mutex mutex;
+std::condition_variable cond;
+std::atomic<bool> stop_flag{false};
 
 void signal_handler(int sig) {
     if (sig == SIGINT) {
-        stop_flag = 1;
+        stop_flag = true;
+        cond.notify_all();
     }
 }
 
@@ -91,7 +95,7 @@ std::string Client::GetUsername() const {
 }
 
 UniqueFD Client::SetupSocket() {
-    UniqueFD fd(socket(AF_INET, SOCK_STREAM, 0));
+    UniqueFD fd(ResourceFactory::MakeUniqueFD(socket(AF_INET, SOCK_STREAM, 0)));
 
     if (!fd.Valid()) {
         throw std::runtime_error("SetupSocket(): " + std::string(strerror(errno)));
@@ -105,7 +109,7 @@ UniqueFD Client::SetupSocket() {
         throw std::invalid_argument("Invalid server address");
     }
 
-    if (connect(fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+    if (connect(fd.Get(), (struct sockaddr*)&addr, sizeof(addr)) < 0) {
         throw std::runtime_error("SetupSocket(): " + std::string(strerror(errno)));
     }
 
@@ -174,7 +178,7 @@ size_t Client::SendAll(const std::vector<uint8_t>& data) {
     size_t data_size{data.size()};
 
     while (total_sent < data_size) {
-        ssize_t sent{send(_server_fd, data.data() + total_sent, data_size - total_sent, 0)};
+        ssize_t sent{send(_server_fd.Get(), data.data() + total_sent, data_size - total_sent, 0)};
         
         if (sent < 0) {
             if (errno == EINTR) {
@@ -221,6 +225,10 @@ void Client::Run() {
             return;
         }
 
-        std::this_thread::sleep_for(std::chrono::seconds(_timeout_sec));
+        std::unique_lock<std::mutex> lock(mutex);
+
+        cond.wait_for(lock, std::chrono::seconds(_timeout_sec), [] {
+            return stop_flag.load();
+        });
     }
 }

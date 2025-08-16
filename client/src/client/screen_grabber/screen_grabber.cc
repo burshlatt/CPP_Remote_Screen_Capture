@@ -9,13 +9,13 @@
 #include "screen_grabber.h"
 
 UniqueDisplay ScreenGrabber::OpenDisplay() {
-    UniqueDisplay disp(XOpenDisplay(nullptr));
+    UniqueDisplay u_disp(ResourceFactory::MakeUniqueDisplay(XOpenDisplay(nullptr)));
 
-    if (!disp.Valid()) {
+    if (!u_disp.Valid()) {
         std::cerr << "XOpenDisplay failed. Check DISPLAY.\n";
     }
 
-    return disp;
+    return u_disp;
 }
 
 bool ScreenGrabber::GetScreenAttributes(Display* disp, XWindowAttributes& gwa) {
@@ -32,13 +32,14 @@ bool ScreenGrabber::GetScreenAttributes(Display* disp, XWindowAttributes& gwa) {
 }
 
 UniqueXImage ScreenGrabber::CaptureImage(Display* disp, Window root, int width, int height) {
-    UniqueXImage img(XGetImage(disp, root, 0, 0, width, height, AllPlanes, ZPixmap));
+    XImage* x_img{XGetImage(disp, root, 0, 0, width, height, AllPlanes, ZPixmap)}; 
+    UniqueXImage u_ximg(ResourceFactory::MakeUniqueXImage(x_img));
 
-    if (!img.Valid()) {
+    if (!u_ximg.Valid()) {
         std::cerr << "XGetImage failed.\n";
     }
 
-    return img;
+    return u_ximg;
 }
 
 std::vector<unsigned char> ScreenGrabber::ConvertToRGB(XImage* img, int width, int height) {

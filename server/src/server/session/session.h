@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "unique_fd.h"
+#include "resource_factory.h"
 
 struct Message {
     uint32_t total_size;
