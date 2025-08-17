@@ -17,51 +17,23 @@ void signal_handler(int sig) {
     }
 }
 
-Server::Server(const std::string& listen_port) :
-    _listen_port(CheckPort(listen_port))
+Server::Server(uint16_t listen_port) :
+    _listen_port(listen_port)
 {}
 
-int Server::CheckPort(const std::string& port) {
-    int serv_port{std::stoi(port)};
-
-    if (serv_port > 0 && serv_port <= 65535) {
-        return serv_port;
-    }
-
-    throw std::invalid_argument("Invalid port: " + std::to_string(serv_port));
-}
-
-std::string Server::CheckHost(const std::string& host) {
-    struct in_addr addr;
-
-    if (inet_pton(AF_INET, host.c_str(), &addr) == 1) {
-        return host;
-    }
-
-    throw std::invalid_argument("Invalid host: " + host);
-}
-
-void Server::SetupEpoll() {
-    _epoll_fd = UniqueFD(ResourceFactory::MakeUniqueFD(epoll_create1(0)));
-    
-    if (!_epoll_fd.Valid()) {
-        throw std::runtime_error("SetupEpoll(): " + std::string(strerror(errno)));
-    }
-}
-
 void Server::SetupServerSocket() {
-    _proxy_fd = UniqueFD(ResourceFactory::MakeUniqueFD(socket(AF_INET, SOCK_STREAM, 0)));
+    _server_fd = UniqueFD(ResourceFactory::MakeUniqueFD(socket(AF_INET, SOCK_STREAM, 0)));
 
-    if (!_proxy_fd.Valid()) {
+    if (!_server_fd.Valid()) {
         throw std::runtime_error("SetupServerSocket(): " + std::string(strerror(errno)));
     }
 
-    int flags{fcntl(_proxy_fd.Get(), F_GETFL, 0)};
-    fcntl(_proxy_fd.Get(), F_SETFL, flags | O_NONBLOCK);
+    int flags{fcntl(_server_fd.Get(), F_GETFL, 0)};
+    fcntl(_server_fd.Get(), F_SETFL, flags | O_NONBLOCK);
 
     int opt{1};
 
-    if (setsockopt(_proxy_fd.Get(), SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
+    if (setsockopt(_server_fd.Get(), SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
         throw std::runtime_error("SetupServerSocket(): " + std::string(strerror(errno)));
     }
 
@@ -72,19 +44,27 @@ void Server::SetupServerSocket() {
 
     auto s_addr{reinterpret_cast<struct sockaddr*>(&server_addr)};
 
-    if (bind(_proxy_fd.Get(), s_addr, sizeof(server_addr)) == -1) {
+    if (bind(_server_fd.Get(), s_addr, sizeof(server_addr)) == -1) {
         throw std::runtime_error("SetupServerSocket(): " + std::string(strerror(errno)));
     }
 
-    if (listen(_proxy_fd.Get(), SOMAXCONN) == -1) {
+    if (listen(_server_fd.Get(), SOMAXCONN) == -1) {
         throw std::runtime_error("SetupServerSocket(): " + std::string(strerror(errno)));
+    }
+}
+
+void Server::SetupEpoll() {
+    _epoll_fd = UniqueFD(ResourceFactory::MakeUniqueFD(epoll_create1(0)));
+    
+    if (!_epoll_fd.Valid()) {
+        throw std::runtime_error("SetupEpoll(): " + std::string(strerror(errno)));
     }
 
     epoll_event event;
     event.events = EPOLLIN | EPOLLET;
-    event.data.fd = _proxy_fd.Get();
+    event.data.fd = _server_fd.Get();
 
-    if (epoll_ctl(_epoll_fd.Get(), EPOLL_CTL_ADD, _proxy_fd.Get(), &event) == -1) {
+    if (epoll_ctl(_epoll_fd.Get(), EPOLL_CTL_ADD, _server_fd.Get(), &event) == -1) {
         throw std::runtime_error("SetupServerSocket(): " + std::string(strerror(errno)));
     }
 }
@@ -95,7 +75,7 @@ void Server::AcceptNewConnections() {
         auto c_addr{reinterpret_cast<sockaddr*>(&client_addr)};
         socklen_t c_addr_len{sizeof(client_addr)};
 
-        UniqueFD client_fd(ResourceFactory::MakeUniqueFD(accept(_proxy_fd.Get(), c_addr, &c_addr_len)));
+        UniqueFD client_fd(ResourceFactory::MakeUniqueFD(accept(_server_fd.Get(), c_addr, &c_addr_len)));
 
         if (!client_fd.Valid()) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -146,6 +126,60 @@ void Server::CloseSession(std::shared_ptr<Session> session) {
     _logger.PrintInTerminal(MessageType::K_INFO, "Close connection. (client: " + host + ":" + port + ")");
 }
 
+void Server::UpdateEpollEvents(int fd, uint32_t events) {
+    epoll_event event;
+    event.data.fd = fd;
+    event.events = events;
+
+    if (epoll_ctl(_epoll_fd.Get(), EPOLL_CTL_MOD, fd, &event) == -1) {
+        throw std::runtime_error("UpdateEpollEvents(): " + std::string(strerror(errno)));
+    }
+}
+
+bool Server::HandleOutEvent(epoll_event& event, std::shared_ptr<Session> session) {
+    int client_fd{event.data.fd};
+
+    if (!session->TrySend(client_fd)) {
+        return false;
+    }
+
+    if (session->SendBufferEmpty()) {
+        UpdateEpollEvents(client_fd, EPOLLIN | EPOLLET);
+    }
+
+    return true;
+}
+
+bool Server::HandleInEvent(epoll_event& event, std::shared_ptr<Session> session) {
+    int client_fd{event.data.fd};
+
+    if (!session->TryRecv(client_fd)) {
+        return false;
+    }
+
+    session->ParseMessage();
+
+    if (session->IsMessageComplete()) {
+        uint8_t msg_type{session->GetMessageType()};
+
+        if (msg_type == 'A') {
+            bool ok{session->HandleAuthRequest()};
+
+            if (!session->SendAuthResponse(client_fd, ok)) {
+                return false;
+            }
+
+            if (!session->SendBufferEmpty()) {
+                UpdateEpollEvents(client_fd, EPOLLIN | EPOLLOUT | EPOLLET);
+            }
+        } else if (msg_type == 'I') {
+            session->HandleImgMessage();
+        }
+    }
+
+    return true;
+}
+
 void Server::HandleEvent(epoll_event& event) {
     int client_fd{event.data.fd};
 
@@ -157,14 +191,26 @@ void Server::HandleEvent(epoll_event& event) {
 
     auto& session{it->second};
 
-    if (!session->RecvAll(client_fd)) {
+    if (event.events & (EPOLLERR | EPOLLRDHUP | EPOLLHUP)) {
         CloseSession(session);
-
+        
         return;
     }
 
-    if (session->IsMessageComplete()) {
-        session->SaveScreen();
+    if (event.events & EPOLLOUT) {
+        if (!HandleOutEvent(event, session)) {
+            CloseSession(session);
+
+            return;
+        }
+    }
+
+    if (event.events & EPOLLIN) {
+        if (!HandleInEvent(event, session)) {
+            CloseSession(session);
+
+            return;
+        }
     }
 }
 
@@ -188,7 +234,7 @@ void Server::EventLoop() {
         for (int i{}; i < num_events; ++i) {
             int fd{events[i].data.fd};
 
-            if (fd == _proxy_fd.Get()) {
+            if (fd == _server_fd.Get()) {
                 AcceptNewConnections();
             } else {
                 HandleEvent(events[i]);
@@ -200,8 +246,11 @@ void Server::EventLoop() {
 void Server::Run() {
     std::signal(SIGINT, signal_handler);
 
-    SetupEpoll();
-    SetupServerSocket();
-    
-    EventLoop();
+    try {
+        SetupServerSocket();
+        SetupEpoll();
+        EventLoop();
+    } catch (const std::runtime_error& ex) {
+        _logger.PrintInTerminal(MessageType::K_ERROR, ex.what());
+    }
 }

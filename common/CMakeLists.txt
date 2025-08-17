@@ -1,5 +1,6 @@
 add_library(common STATIC
     src/logger.cc
+    src/input_parser.cc
     src/resource_factory.cc
 )
 

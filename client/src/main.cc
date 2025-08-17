@@ -1,16 +1,18 @@
 #include <iostream>
 
 #include "client.h"
+#include "input_parser.h"
 
-int main(int argc, char** argv) {
-    if (argc != 5 || std::string(argv[1]) != "--srv" || std::string(argv[3]) != "--period") {
-        std::cerr << "Usage: " << argv[0] << " --srv <host>:<port> --period <timeout secs>\n";
-
-        return 1;
-    }
-
+int main(int argc, char* argv[]) {
     try {
-        Client client(argv[2], std::stoi(argv[4]));
+        InputParser parser(ProgramType::K_CLIENT);
+        parser.Parse(argc, argv);
+
+        std::string host{parser.GetHost()};
+        uint16_t port{parser.GetPort()};
+        unsigned period{parser.GetPeriod()};
+
+        Client client(host, port, period);
         client.Run();
     } catch (const std::invalid_argument& ex) {
         std::cerr << ex.what() << '\n';

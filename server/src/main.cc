@@ -1,16 +1,16 @@
 #include <iostream>
 
 #include "server.h"
+#include "input_parser.h"
 
 int main(int argc, char* argv[]) {
-    if (argc != 3 || std::string(argv[1]) != "--port") {
-        std::cerr << "Usage: " << argv[0] << " --port <listen port>\n";
-
-        return 1;
-    }
-
     try {
-        Server server(argv[2]);
+        InputParser parser(ProgramType::K_SERVER);
+        parser.Parse(argc, argv);
+
+        uint16_t port{parser.GetPort()};
+
+        Server server(port);
         server.Run();
     } catch (const std::invalid_argument& ex) {
         std::cerr << ex.what() << '\n';
