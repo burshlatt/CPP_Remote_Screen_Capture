@@ -83,7 +83,7 @@ private:
 
     /**
      * @brief Разобрать аргумент --period (только для клиента)
-     * @param arg Период в миллисекундах (>0)
+     * @param arg Период в секундах (>= 0)
      * @throw std::invalid_argument При невалидном периоде
      */
     void ParsePeriod(char* arg);
