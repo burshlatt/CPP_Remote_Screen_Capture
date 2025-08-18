@@ -63,9 +63,14 @@ public:
 
 private:
     /**
-     * @brief Инициализировать структуры для разбора аргументов
+     * @brief Инициализировать серверные структуры для разбора аргументов
      */
-    void InitStructs();
+    void InitServerStructs();
+
+    /**
+     * @brief Инициализировать клиентские структуры для разбора аргументов
+     */
+    void InitClientStructs();
 
     /**
      * @brief Разобрать аргумент --srv (только для клиента)
@@ -75,7 +80,21 @@ private:
     void ParseSrv(char* arg);
 
     /**
-     * @brief Разобрать аргумент --port (только для сервера)
+     * @brief Разобрать хостовую часть аргумента --srv (только для сервера)
+     * @param arg хост
+     * @throw std::invalid_argument При невалидном хосте
+     */
+    void ParseHost(char* arg);
+
+    /**
+     * @brief Получить число из строки
+     * @param arg строка с числом
+     * @throw std::invalid_argument При невалидной строке
+     */
+    int ParseNum(const std::string& num_str);
+
+    /**
+     * @brief Разобрать аргумент --port или портовую часть из --srv
      * @param arg Номер порта (1-65535)
      * @throw std::invalid_argument При невалидном порте
      */

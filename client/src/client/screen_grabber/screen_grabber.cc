@@ -58,19 +58,7 @@ std::vector<uint8_t> ScreenGrabber::ConvertToRGB(XImage* img, int width, int hei
             uint8_t green;
             uint8_t blue;
 
-            if (bpp == 32) {
-                if (is_lsb_first) {
-                    // 32 bpp LSBFirst: BGRA
-                    blue  = row[x * 4 + 0];
-                    green = row[x * 4 + 1];
-                    red   = row[x * 4 + 2];
-                } else {
-                    // 32 bpp MSBFirst: ARGB
-                    red   = row[x * 4 + 1];
-                    green = row[x * 4 + 2];
-                    blue  = row[x * 4 + 3];
-                }
-            } else {
+            if (bpp == 24) {
                 if (is_lsb_first) {
                     // 24 bpp LSBFirst: BGR
                     blue  = row[x * 3 + 0];
@@ -81,6 +69,18 @@ std::vector<uint8_t> ScreenGrabber::ConvertToRGB(XImage* img, int width, int hei
                     red   = row[x * 3 + 0];
                     green = row[x * 3 + 1];
                     blue  = row[x * 3 + 2];
+                }
+            } else if (bpp == 32) {
+                if (is_lsb_first) {
+                    // 32 bpp LSBFirst: BGRA
+                    blue  = row[x * 4 + 0];
+                    green = row[x * 4 + 1];
+                    red   = row[x * 4 + 2];
+                } else {
+                    // 32 bpp MSBFirst: ARGB
+                    red   = row[x * 4 + 1];
+                    green = row[x * 4 + 2];
+                    blue  = row[x * 4 + 3];
                 }
             }
 

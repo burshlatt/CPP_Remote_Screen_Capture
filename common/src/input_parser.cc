@@ -7,31 +7,35 @@
 InputParser::InputParser(ProgramType type) :
     _prog_type(type)
 {
-    InitStructs();
+    if (_prog_type == ProgramType::K_SERVER) {
+        InitServerStructs();
+    } else if (_prog_type == ProgramType::K_CLIENT) {
+        InitClientStructs();
+    }
 }
 
-void InputParser::InitStructs() {
-    if (_prog_type == ProgramType::K_SERVER) {
-        _long_options = {
-            {"port", required_argument, nullptr, 0},
-            {nullptr, 0, nullptr, 0}
-        };
+void InputParser::InitServerStructs() {
+    _long_options = {
+        {"port", required_argument, nullptr, 0},
+        {nullptr, 0, nullptr, 0}
+    };
 
-        _option_enabled_ht = {
-            { "--port", false }
-        };
-    } else if (_prog_type == ProgramType::K_CLIENT) {
-        _long_options = {
-            {"srv", required_argument, nullptr, 0},
-            {"period", required_argument, nullptr, 0},
-            {nullptr, 0, nullptr, 0}
-        };
+    _option_enabled_ht = {
+        { "--port", false }
+    };
+}
 
-        _option_enabled_ht = {
-            { "--srv", false },
-            { "--period", false }
-        };
-    }
+void InputParser::InitClientStructs() {
+    _long_options = {
+        {"srv", required_argument, nullptr, 0},
+        {"period", required_argument, nullptr, 0},
+        {nullptr, 0, nullptr, 0}
+    };
+
+    _option_enabled_ht = {
+        { "--srv", false },
+        { "--period", false }
+    };
 }
 
 std::string InputParser::GetHost() const noexcept {
@@ -56,10 +60,17 @@ void InputParser::ParseSrv(char* arg) {
     }
 
     auto host_end_it{host_port.begin() + pos};
-    std::string host_str(host_port.begin(), host_end_it);
-
     auto port_beg_it{host_port.begin() + pos + 1};
+
+    std::string host_str(host_port.begin(), host_end_it);
     std::string port_str(port_beg_it, host_port.end());
+
+    ParseHost(host_str.data());
+    ParsePort(port_str.data());
+}
+
+void InputParser::ParseHost(char* arg) {
+    std::string host_str(arg);
 
     struct in_addr addr;
 
@@ -67,30 +78,24 @@ void InputParser::ParseSrv(char* arg) {
         throw std::invalid_argument("Invalid host.");
     }
 
-    size_t count{};
-    int port{std::stoi(port_str, &count)};
-
-    if (count != port_str.size()) {
-        throw std::invalid_argument("Invalid port.");
-    }
-
-    if (port <= 0 || port > 65535) {
-        throw std::invalid_argument("Invalid port.");
-    }
-
     _host = host_str;
-    _port = static_cast<uint16_t>(port);
+}
+
+int InputParser::ParseNum(const std::string& num_str) {
+    size_t count{};
+    int num{std::stoi(num_str, &count)};
+
+    if (count != num_str.size()) {
+        throw std::invalid_argument("Invalid num.");
+    }
+
+    return num;
 }
 
 void InputParser::ParsePort(char* arg) {
     std::string port_str(arg);
 
-    size_t count{};
-    int port{std::stoi(port_str, &count)};
-
-    if (count != port_str.size()) {
-        throw std::invalid_argument("Invalid port.");
-    }
+    int port{ParseNum(port_str)};
 
     if (port <= 0 || port > 65535) {
         throw std::invalid_argument("Invalid port.");
@@ -102,12 +107,7 @@ void InputParser::ParsePort(char* arg) {
 void InputParser::ParsePeriod(char* arg) {
     std::string period_str(arg);
 
-    size_t count{};
-    int period{std::stoi(period_str, &count)};
-
-    if (count != period_str.size()) {
-        throw std::invalid_argument("Invalid period.");
-    }
+    int period{ParseNum(period_str)};
 
     if (period < 0 || period > 86400) {
         throw std::invalid_argument("Invalid period.");
