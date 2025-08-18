@@ -135,11 +135,13 @@ ssize_t Client::SendAll(const std::vector<uint8_t>& data) {
     size_t data_size{data.size()};
 
     while (total_sent < data_size) {
-        ssize_t sent{send(_server_fd.Get(), data.data() + total_sent, data_size - total_sent, 0)};
+        ssize_t sent{send(_server_fd.Get(), data.data() + total_sent, data_size - total_sent, MSG_NOSIGNAL)};
         
         if (sent < 0) {
             if (errno == EINTR) {
                 continue;
+            } else if (errno == EPIPE) {
+                throw std::runtime_error("send() error: broken pipe (connection closed by server)");
             }
 
             throw std::runtime_error("send() error: " + std::string(strerror(errno)));

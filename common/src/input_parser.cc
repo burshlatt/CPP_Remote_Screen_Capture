@@ -67,9 +67,14 @@ void InputParser::ParseSrv(char* arg) {
         throw std::invalid_argument("Invalid host.");
     }
 
-    int port{std::stoi(port_str)};
+    size_t count{};
+    int port{std::stoi(port_str, &count)};
 
-    if (port <= 0 && port > 65535) {
+    if (count != port_str.size()) {
+        throw std::invalid_argument("Invalid port.");
+    }
+
+    if (port <= 0 || port > 65535) {
         throw std::invalid_argument("Invalid port.");
     }
 
@@ -78,31 +83,35 @@ void InputParser::ParseSrv(char* arg) {
 }
 
 void InputParser::ParsePort(char* arg) {
-    try {
-        int port{std::stoi(std::string(arg))};
+    std::string port_str(arg);
 
-        if (port > 0 && port <= 65535) {
-            _port = port;
-        }
-    } catch (...) {
-        std::cerr << "Invalid port.\n";
+    size_t count{};
+    int port{std::stoi(port_str, &count)};
 
-        throw;
+    if (count != port_str.size()) {
+        throw std::invalid_argument("Invalid port.");
+    }
+
+    if (port > 0 && port <= 65535) {
+        _port = port;
     }
 }
 
 void InputParser::ParsePeriod(char* arg) {
-    try {
-        int period{std::stoi(std::string(arg))};
+    std::string period_str(arg);
 
-        if (period > 0) {
-            _period = period;
-        }
-    } catch (...) {
-        std::cerr << "Invalid period.\n";
+    size_t count{};
+    int period{std::stoi(period_str, &count)};
 
-        throw;
+    if (count != period_str.size()) {
+        throw std::invalid_argument("Invalid period.");
     }
+
+    if (period < 0 || period > 86400) {
+        throw std::invalid_argument("Invalid period.");
+    }
+
+    _period = period;
 }
 
 void InputParser::HandleServerOption(int opt_index) {
@@ -129,18 +138,18 @@ void InputParser::HandleClientOption(int opt_index) {
 }
 
 void InputParser::Parse(int argc, char* argv[]) {
-    while (true) {
-        int option_index{0};
+    int option_index{0};
 
-        if (getopt_long(argc, argv, "", _long_options.data(), &option_index) == -1) {
-            break;
-        }
-
-        std::string option(argv[optind - 2]);
+    while (getopt_long(argc, argv, "", _long_options.data(), &option_index) != -1) {
+        std::string option(argv[optind - (optarg ? 2 : 1)]);
         auto it{_option_enabled_ht.find(option)};
 
         if (it == _option_enabled_ht.end()) {
-            throw std::invalid_argument("Invalid option: " + std::string(argv[optind - 2]));
+            throw std::invalid_argument("Invalid option: " + option);
+        }
+
+        if (it->second == true) {
+            throw std::invalid_argument("Duplicate option: " + it->first);
         }
 
         if (_prog_type == ProgramType::K_SERVER) {

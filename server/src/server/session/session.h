@@ -17,9 +17,9 @@
  * - сами данные
  */
 struct Message {
-    std::vector<uint8_t> type_vec;   ///< Вектор байт типа сообщения (1 байт)
-    std::vector<uint8_t> size_vec;   ///< Вектор байт размера данных (4 байта)
-    std::vector<uint8_t> bytes_vec;  ///< Вектор байт данных сообщения
+    std::vector<uint8_t> type_vec;  ///< Вектор байт типа сообщения (1 байт)
+    std::vector<uint8_t> size_vec;  ///< Вектор байт размера данных (4 байта)
+    std::vector<uint8_t> bytes_vec; ///< Вектор байт данных сообщения
 
     /**
      * @brief Очистить все поля сообщения
@@ -212,6 +212,13 @@ private:
      * @return true если данных хватило, false если нет
      */
     bool FromReqToVec(std::vector<uint8_t>& vec, size_t len);
+
+    /**
+     * @brief Проверить строки с hostname и username на валидность
+     * @param name Исходная строка
+     * @return true если все хорошо, иначе false
+     */
+    bool IsValidName(const std::string& name);
 
 private:
     UniqueFD _client_fd;            ///< Дескриптор клиентского сокета
