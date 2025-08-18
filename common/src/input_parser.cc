@@ -92,9 +92,11 @@ void InputParser::ParsePort(char* arg) {
         throw std::invalid_argument("Invalid port.");
     }
 
-    if (port > 0 && port <= 65535) {
-        _port = port;
+    if (port <= 0 || port > 65535) {
+        throw std::invalid_argument("Invalid port.");
     }
+
+    _port = port;
 }
 
 void InputParser::ParsePeriod(char* arg) {
