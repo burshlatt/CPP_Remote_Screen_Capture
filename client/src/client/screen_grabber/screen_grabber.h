@@ -60,7 +60,7 @@ public:
      * 4. Конвертация в RGB
      * 5. Кодирование в PNG
      */
-    void GrabAsPNG(std::vector<unsigned char>& out_png, int& out_w, int& out_h);
+    void GrabAsPNG(std::vector<uint8_t>& out_png, int& out_w, int& out_h);
 
 private:
     /**
@@ -94,10 +94,10 @@ private:
      * @param[in] img Исходное XImage для конвертации.
      * @param[in] width Ширина изображения.
      * @param[in] height Высота изображения.
-     * @return std::vector<unsigned char> Пиксельные данные в RGB (3 байта на пиксель).
+     * @return std::vector<uint8_t> Пиксельные данные в RGB (3 байта на пиксель).
      * @throw grabber_error При неподдерживаемом формате пикселей.
      */
-    std::vector<unsigned char> ConvertToRGB(XImage* img, int width, int height);
+    std::vector<uint8_t> ConvertToRGB(XImage* img, int width, int height);
     
     /**
      * @brief Кодирует RGB данные в PNG формат.
@@ -106,7 +106,7 @@ private:
      * @param[in] height Высота изображения.
      * @param[out] out_png Результирующие PNG данные.
      */
-    void EncodePNG(const std::vector<unsigned char>& pixels, int width, int height, std::vector<unsigned char>& out_png);
+    void EncodePNG(const std::vector<uint8_t>& pixels, int width, int height, std::vector<uint8_t>& out_png);
     
 private:
     Logger _logger; ///< Экземпляр логгера для записи ошибок.

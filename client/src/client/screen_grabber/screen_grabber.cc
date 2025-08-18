@@ -38,9 +38,9 @@ UniqueXImage ScreenGrabber::CaptureImage(Display* disp, Window root, int width, 
     return u_ximg;
 }
 
-std::vector<unsigned char> ScreenGrabber::ConvertToRGB(XImage* img, int width, int height) {
+std::vector<uint8_t> ScreenGrabber::ConvertToRGB(XImage* img, int width, int height) {
     const int channels{3};
-    std::vector<unsigned char> pixels(width * height * channels);
+    std::vector<uint8_t> pixels(width * height * channels);
 
     int bpp{img->bits_per_pixel};
 
@@ -51,12 +51,12 @@ std::vector<unsigned char> ScreenGrabber::ConvertToRGB(XImage* img, int width, i
     const bool is_lsb_first{(img->byte_order == LSBFirst)};
 
     for (int y{0}; y < height; ++y) {
-        unsigned char* row{reinterpret_cast<unsigned char*>(img->data + y * img->bytes_per_line)};
+        uint8_t* row{reinterpret_cast<uint8_t*>(img->data + y * img->bytes_per_line)};
 
         for (int x{0}; x < width; ++x) {
-            unsigned char red;
-            unsigned char green;
-            unsigned char blue;
+            uint8_t red;
+            uint8_t green;
+            uint8_t blue;
 
             if (bpp == 32) {
                 if (is_lsb_first) {
@@ -95,11 +95,11 @@ std::vector<unsigned char> ScreenGrabber::ConvertToRGB(XImage* img, int width, i
     return pixels;
 }
 
-void ScreenGrabber::EncodePNG(const std::vector<unsigned char>& pixels, int width, int height, std::vector<unsigned char>& out_png) {
+void ScreenGrabber::EncodePNG(const std::vector<uint8_t>& pixels, int width, int height, std::vector<uint8_t>& out_png) {
     struct MemWriter {
         static void write(void* context, void* data, int size) {
-            auto* vec{reinterpret_cast<std::vector<unsigned char>*>(context)};
-            auto char_data{reinterpret_cast<unsigned char*>(data)};
+            auto* vec{reinterpret_cast<std::vector<uint8_t>*>(context)};
+            auto char_data{reinterpret_cast<uint8_t*>(data)};
 
             vec->insert(vec->end(), char_data, char_data + size);
         }
@@ -110,7 +110,7 @@ void ScreenGrabber::EncodePNG(const std::vector<unsigned char>& pixels, int widt
     stbi_write_png_to_func(MemWriter::write, &out_png, width, height, 3, pixels.data(), width * 3);
 }
 
-void ScreenGrabber::GrabAsPNG(std::vector<unsigned char>& out_png, int& out_w, int& out_h) {
+void ScreenGrabber::GrabAsPNG(std::vector<uint8_t>& out_png, int& out_w, int& out_h) {
     UniqueDisplay disp(OpenDisplay());
     XWindowAttributes gwa;
 
@@ -125,7 +125,7 @@ void ScreenGrabber::GrabAsPNG(std::vector<unsigned char>& out_png, int& out_w, i
 
     Window root{gwa.root};
     UniqueXImage img(CaptureImage(disp.Get(), root, width, height));
-    std::vector<unsigned char> pixels(ConvertToRGB(img.Get(), width, height));
+    std::vector<uint8_t> pixels(ConvertToRGB(img.Get(), width, height));
 
     EncodePNG(pixels, width, height, out_png);
 
