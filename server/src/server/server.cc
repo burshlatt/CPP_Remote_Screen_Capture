@@ -131,13 +131,12 @@ void Server::AcceptNewConnections() {
 
 void Server::CloseSession(std::shared_ptr<Session> session) {
     int client_fd{session->GetClientFD()};
+    std::string host(session->GetClientHost());
+    std::string port{session->GetClientPort()};
 
     epoll_ctl(_epoll_fd.Get(), EPOLL_CTL_DEL, client_fd, nullptr);
 
     _fd_session_ht.erase(client_fd);
-
-    std::string host(session->GetClientHost());
-    std::string port{session->GetClientPort()};
 
     _logger.PrintInTerminal(MessageType::K_INFO, "Close connection. (client: " + host + ":" + port + ")");
 }
